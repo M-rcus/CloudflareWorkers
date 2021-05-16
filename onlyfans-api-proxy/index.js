@@ -20,20 +20,16 @@ async function getChecksumData()
 
 const appToken = '33d57ade8c02dbc5a333db99ff9ae26a';
 
-/**
- * @param {String} username
- */
-async function getOnlyFansUser(username)
+async function calculateChecksum(ofPath, authId)
 {
-    /**
-     * Calculate checksum
-     */
+    if (!authId) {
+        authId = 0;
+    }
+    
     const checksumData = await getChecksumData();
     const { checksum_indexes, checksum_constant, static_param, format } = checksumData;
-
     const timestamp = Date.now();
-    const ofPath = `/api2/v2/users/${username}`;
-    const stuff = [static_param, timestamp, ofPath, '0'];
+    const stuff = [static_param, timestamp, ofPath, authId];
     const message = new TextEncoder('UTF-8').encode(stuff.join('\n'));
     const hashBfr = await crypto.subtle.digest('SHA-1', message);
     const hex = [...new Uint8Array(hashBfr)].map(x => x.toString(16).padStart(2, '0')).join('');
@@ -48,6 +44,20 @@ async function getOnlyFansUser(username)
     checksum = Math.abs(checksum + checksum_constant);
 
     const sign = format.replace('{}', hex).replace('{:x}', checksum.toString(16));
+    return {
+        sign,
+        timestamp,
+    };
+}
+
+/**
+ * @param {String} username
+ */
+async function getOnlyFansUser(username)
+{
+    const ofPath = `/api2/v2/users/${username}`;
+    const { sign, timestamp } = await calculateChecksum(ofPath);
+
     const apiHeaders = {
         accept: 'application/json',
         'app-token': appToken,
@@ -108,6 +118,46 @@ async function htmlEmbed(user)
     });
 }
 
+async function jsonResponse(data)
+{
+    if (typeof data === 'object') {
+        data = JSON.stringify(data);
+    }
+
+    return new Response(data, {
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    });
+}
+
+/**
+ * Calculate API stuff
+ * 
+ * @param  {URL} url
+ * @return {Response}
+ */
+async function calculateApi(url)
+{
+    let results = {};
+    const params = url.searchParams;
+
+    if (!params.has('path')) {
+        results.error = 'Specify the `path` parameter';
+
+        return jsonResponse(results);
+    }
+
+    const path = params.get('path');
+    let authId = 0;
+    if (params.has('authId')) {
+        authId = params.get('authId');
+    }
+
+    results = await calculateChecksum(path, authId);
+    return await jsonResponse(results);
+}
+
 /**
  * Receives a HTTP request and replies with a response.
  * @param {Request} request
@@ -115,7 +165,13 @@ async function htmlEmbed(user)
  */
 async function handleRequest(request) {
     const { method, url } = request;
-    const { host, pathname, searchParams } = new URL(url);
+    const urlData = new URL(url);
+    const { host, pathname, searchParams } = urlData;
+
+    const apiPath = pathname.replace('/', '').split('/')[0];
+    if (apiPath === 'calculate') {
+        return await calculateApi(urlData);
+    }
 
     if (!searchParams.has('user')) {
         return new Response('{"error": "Specify `user` parameter"}', {
@@ -126,7 +182,6 @@ async function handleRequest(request) {
     const username = searchParams.get('user');
     const user = await getOnlyFansUser(username);
 
-    const apiPath = pathname.replace('/', '').split('/')[0];
     if (apiPath === 'embed') {
         return await htmlEmbed(user);
     }
