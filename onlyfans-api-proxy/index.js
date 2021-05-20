@@ -18,7 +18,7 @@ async function getChecksumData()
     return data;
 }
 
-const appToken = '33d57ade8c02dbc5a333db99ff9ae26a';
+let appToken = '33d57ade8c02dbc5a333db99ff9ae26a';
 
 async function calculateChecksum(ofPath, authId)
 {
@@ -27,6 +27,9 @@ async function calculateChecksum(ofPath, authId)
     }
     
     const checksumData = await getChecksumData();
+
+    appToken = checksumData.app_token;
+
     const { checksum_indexes, checksum_constant, static_param, format } = checksumData;
     const timestamp = Date.now();
     const stuff = [static_param, timestamp, ofPath, authId];
