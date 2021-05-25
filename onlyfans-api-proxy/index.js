@@ -15,15 +15,34 @@ async function getChecksumData()
     });
 
     const data = await response.json();
-    return data;
+    const version = parseInt(data.format.replace(/:.+$/g, ''), 10);
+
+    if (version >= 24) {
+        return data;
+    }
+
+    return {
+        static_param: 'JEoSqndYA4oSbs5ADih1hw3akA6kmrEb',
+        format: '24:{}:{:x}:60acc344',
+        checksum_indexes: [15,25,21,21,35,27,29,18,25,2,15,37,6,16,2,14,18,12,15,4,31,1,4,15,0,35,31,9,38,1,14,7],
+        checksum_constant: -966,
+        app_token: '33d57ade8c02dbc5a333db99ff9ae26a',
+        remove_headers: ['user-id'],
+        error_code: 0,
+        message: ''
+    };
 }
 
 let appToken = '33d57ade8c02dbc5a333db99ff9ae26a';
 
-async function calculateChecksum(ofPath, authId)
+async function calculateChecksum(ofPath, authId, timestamp)
 {
     if (!authId) {
         authId = 0;
+    }
+
+    if (!timestamp) {
+        timestamp = Date.now();
     }
     
     const checksumData = await getChecksumData();
@@ -31,7 +50,6 @@ async function calculateChecksum(ofPath, authId)
     appToken = checksumData.app_token;
 
     const { checksum_indexes, checksum_constant, static_param, format } = checksumData;
-    const timestamp = Date.now();
     const stuff = [static_param, timestamp, ofPath, authId];
     const message = new TextEncoder('UTF-8').encode(stuff.join('\n'));
     const hashBfr = await crypto.subtle.digest('SHA-1', message);
@@ -157,7 +175,12 @@ async function calculateApi(url)
         authId = params.get('authId');
     }
 
-    results = await calculateChecksum(path, authId);
+    let timestamp = 0;
+    if (params.has('timestamp')) {
+        timestamp = parseInt(params.get('timestamp'), 10);
+    }
+
+    results = await calculateChecksum(path, authId, timestamp);
     return await jsonResponse(results);
 }
 
